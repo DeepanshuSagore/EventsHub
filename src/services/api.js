@@ -37,6 +37,12 @@ async function apiFetch(path, { method = 'GET', body, token, headers = {} } = {}
     const error = new Error(errorBody.message || 'Request failed');
     error.status = response.status;
     error.details = errorBody.details;
+    if (errorBody.code && !error.code) {
+      error.code = errorBody.code;
+    }
+    if (errorBody.debug && !error.debug) {
+      error.debug = errorBody.debug;
+    }
     throw error;
   }
 

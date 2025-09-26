@@ -3,6 +3,26 @@ import User from '../models/User.js';
 
 const firebaseAuth = getFirebaseAuth();
 
+function formatAuthError(error) {
+  if (!error || typeof error !== 'object') {
+    return { message: 'Invalid or expired authentication token' };
+  }
+
+  const details = {
+    message:
+      error.code === 'auth/argument-error'
+        ? 'Authentication token is malformed or missing.'
+        : 'Invalid or expired authentication token',
+    code: error.code ?? undefined
+  };
+
+  if (error.message && !details.message.includes(error.message)) {
+    details.debug = error.message;
+  }
+
+  return details;
+}
+
 export async function authenticate(req, res, next) {
   try {
     const header = req.headers.authorization ?? '';
@@ -21,6 +41,7 @@ export async function authenticate(req, res, next) {
     return next();
   } catch (error) {
     console.error('Authentication error:', error);
-    return res.status(401).json({ message: 'Invalid or expired authentication token' });
+    const payload = formatAuthError(error);
+    return res.status(401).json(payload);
   }
 }
