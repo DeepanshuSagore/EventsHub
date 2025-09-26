@@ -395,6 +395,7 @@ pre code {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: var(--space-8);
   padding: var(--space-8) var(--space-16);
   border-radius: var(--radius-base);
   font-size: var(--font-size-base);
@@ -835,6 +836,9 @@ select.form-control {
   margin: 0;
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-bold);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-12);
 }
 
 .nav-brand h2[role='button'] {
@@ -1138,6 +1142,18 @@ select.form-control {
   box-shadow: var(--shadow-sm);
 }
 
+.stat-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto var(--space-16);
+  border-radius: var(--radius-full);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .stat-number {
   font-size: 3rem;
   font-weight: var(--font-weight-bold);
@@ -1202,9 +1218,20 @@ select.form-control {
   margin-bottom: var(--space-12);
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.event-card-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
 }
 
 .event-card-department {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
   background: var(--color-primary-light);
   color: var(--color-primary);
   padding: var(--space-4) var(--space-8);
@@ -1257,6 +1284,9 @@ select.form-control {
 }
 
 .tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
   padding: var(--space-12) var(--space-20);
   background: none;
   border: none;
@@ -1318,6 +1348,9 @@ select.form-control {
 }
 
 .post-card-type {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
   background: var(--color-primary);
   color: white;
   padding: var(--space-4) var(--space-8);
@@ -1363,6 +1396,9 @@ select.form-control {
 }
 
 .post-card-contact {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
   font-size: var(--font-size-sm);
   color: var(--color-primary);
   font-weight: var(--font-weight-medium);
@@ -1437,8 +1473,18 @@ select.form-control {
 }
 
 .admin-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-12);
   color: var(--color-text-secondary);
   font-size: var(--font-size-sm);
+}
+
+.admin-card-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-6);
 }
 
 .admin-card-description {

@@ -4,6 +4,23 @@ import { formatDate } from './utils';
 import Modal from './components/Modal';
 import { useAuth } from './contexts/AuthContext.jsx';
 import {
+  CalendarBlank,
+  Clock,
+  EnvelopeSimple,
+  Handshake,
+  MapPin,
+  MegaphoneSimple,
+  PaperPlaneTilt,
+  PlusCircle,
+  RocketLaunch,
+  SignIn,
+  SignOut,
+  Student,
+  Trash,
+  UserCircle,
+  UsersThree
+} from 'phosphor-react';
+import {
   API_BASE_URL,
   fetchEvents,
   createEvent as createEventApi,
@@ -688,7 +705,8 @@ export default function App() {
                 }
               }}
             >
-              EventsHub
+              <RocketLaunch size={28} weight="fill" aria-hidden="true" />
+              <span>EventsHub</span>
             </h2>
           </div>
           <button
@@ -759,7 +777,8 @@ export default function App() {
                     onClick={handleLogout}
                     disabled={authLoading}
                   >
-                    Log out
+                    <SignOut size={18} aria-hidden="true" />
+                    <span>Log out</span>
                   </button>
                 </>
               ) : (
@@ -769,7 +788,14 @@ export default function App() {
                   onClick={() => openModal('login')}
                   disabled={authInitializing || authLoading}
                 >
-                  {authInitializing ? 'Loading…' : 'Login'}
+                  {authInitializing ? (
+                    'Loading…'
+                  ) : (
+                    <>
+                      <SignIn size={18} aria-hidden="true" />
+                      <span>Login</span>
+                    </>
+                  )}
                 </button>
               )}
             </li>
@@ -804,14 +830,16 @@ export default function App() {
                   className="btn btn--primary btn--lg"
                   onClick={() => handleNavigate('events')}
                 >
-                  Browse Events
+                  <CalendarBlank size={22} weight="bold" aria-hidden="true" />
+                  <span>Browse Events</span>
                 </button>
                 <button
                   type="button"
                   className="btn btn--outline btn--lg"
                   onClick={() => handleNavigate('hackfinder')}
                 >
-                  Find Teams
+                  <UsersThree size={22} weight="bold" aria-hidden="true" />
+                  <span>Find Teams</span>
                 </button>
               </div>
             </div>
@@ -822,18 +850,30 @@ export default function App() {
           <div className="container">
             <div className="stats-grid">
               <div className="stat-card">
+                <div className="stat-icon" aria-hidden="true">
+                  <CalendarBlank size={28} weight="bold" />
+                </div>
                 <div className="stat-number">8</div>
                 <div className="stat-label">Upcoming Events</div>
               </div>
               <div className="stat-card">
+                <div className="stat-icon" aria-hidden="true">
+                  <UsersThree size={28} weight="bold" />
+                </div>
                 <div className="stat-number">12</div>
                 <div className="stat-label">Active Teams</div>
               </div>
               <div className="stat-card">
+                <div className="stat-icon" aria-hidden="true">
+                  <Student size={28} weight="bold" />
+                </div>
                 <div className="stat-number">247</div>
                 <div className="stat-label">Registered Students</div>
               </div>
               <div className="stat-card">
+                <div className="stat-icon" aria-hidden="true">
+                  <Handshake size={28} weight="bold" />
+                </div>
                 <div className="stat-number">45</div>
                 <div className="stat-label">Successful Connections</div>
               </div>
@@ -855,16 +895,31 @@ export default function App() {
                     <div className="event-card-header">
                       <h3 className="event-card-title">{event.title}</h3>
                       <div className="event-card-meta">
-                        <span>📅 {formatDate(event.date)}</span>
-                        <span>⏰ {event.time}</span>
+                        <span className="event-card-meta-item">
+                          <CalendarBlank size={18} weight="bold" aria-hidden="true" />
+                          <span>{formatDate(event.date)}</span>
+                        </span>
+                        <span className="event-card-meta-item">
+                          <Clock size={18} weight="bold" aria-hidden="true" />
+                          <span>{event.time}</span>
+                        </span>
                       </div>
-                      <span className="event-card-department">{event.department}</span>
+                      <span className="event-card-department">
+                        <MapPin size={16} weight="bold" aria-hidden="true" />
+                        <span>{event.department}</span>
+                      </span>
                     </div>
                     <div className="event-card-body">
                       <p className="event-card-description">{event.description}</p>
                       <div className="event-card-actions">
-                        <a href={event.registrationLink} target="_blank" rel="noreferrer" className="btn btn--primary">
-                          Register
+                        <a
+                          href={event.registrationLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn--primary"
+                        >
+                          <PaperPlaneTilt size={18} weight="bold" aria-hidden="true" />
+                          <span>Register</span>
                         </a>
                         {isAdmin && (
                           <button
@@ -873,7 +928,8 @@ export default function App() {
                             onClick={() => handleDeleteEvent(event.id)}
                             disabled={moderationLoading}
                           >
-                            Delete
+                            <Trash size={18} aria-hidden="true" />
+                            <span>Delete</span>
                           </button>
                         )}
                       </div>
@@ -892,13 +948,15 @@ export default function App() {
             <h1>Events</h1>
             {canSubmitEvent ? (
               <button type="button" className="btn btn--primary" onClick={() => openModal('event')}>
-                Create Event
+                <PlusCircle size={18} weight="bold" aria-hidden="true" />
+                <span>Create Event</span>
               </button>
             ) : isAuthenticated ? (
               <span className="page-note">Event creation is limited to Admin or Event Head accounts.</span>
             ) : (
               <button type="button" className="btn btn--outline" onClick={() => openModal('login')}>
-                Log in to submit an event
+                <SignIn size={18} aria-hidden="true" />
+                <span>Log in to submit an event</span>
               </button>
             )}
           </div>
@@ -936,16 +994,31 @@ export default function App() {
                   <div className="event-card-header">
                     <h3 className="event-card-title">{event.title}</h3>
                     <div className="event-card-meta">
-                      <span>📅 {formatDate(event.date)}</span>
-                      <span>⏰ {event.time}</span>
+                      <span className="event-card-meta-item">
+                        <CalendarBlank size={18} weight="bold" aria-hidden="true" />
+                        <span>{formatDate(event.date)}</span>
+                      </span>
+                      <span className="event-card-meta-item">
+                        <Clock size={18} weight="bold" aria-hidden="true" />
+                        <span>{event.time}</span>
+                      </span>
                     </div>
-                    <span className="event-card-department">{event.department}</span>
+                    <span className="event-card-department">
+                      <MapPin size={16} weight="bold" aria-hidden="true" />
+                      <span>{event.department}</span>
+                    </span>
                   </div>
                   <div className="event-card-body">
                     <p className="event-card-description">{event.description}</p>
                     <div className="event-card-actions">
-                      <a href={event.registrationLink} target="_blank" rel="noreferrer" className="btn btn--primary">
-                        Register
+                      <a
+                        href={event.registrationLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn--primary"
+                      >
+                        <PaperPlaneTilt size={18} weight="bold" aria-hidden="true" />
+                        <span>Register</span>
                       </a>
                       {isAdmin && (
                         <button
@@ -954,7 +1027,8 @@ export default function App() {
                           onClick={() => handleDeleteEvent(event.id)}
                           disabled={moderationLoading}
                         >
-                          Delete
+                          <Trash size={18} aria-hidden="true" />
+                          <span>Delete</span>
                         </button>
                       )}
                     </div>
@@ -972,11 +1046,13 @@ export default function App() {
             <h1>HackFinder</h1>
             {canSubmitPost ? (
               <button type="button" className="btn btn--primary" onClick={() => openModal('post')}>
-                Create Post
+                <MegaphoneSimple size={18} weight="bold" aria-hidden="true" />
+                <span>Create Post</span>
               </button>
             ) : (
               <button type="button" className="btn btn--outline" onClick={() => openModal('login')}>
-                Log in to create a post
+                <SignIn size={18} aria-hidden="true" />
+                <span>Log in to create a post</span>
               </button>
             )}
           </div>
@@ -987,14 +1063,16 @@ export default function App() {
               className={`tab-btn ${hackfinderTab === 'teams' ? 'active' : ''}`}
               onClick={() => setHackfinderTab('teams')}
             >
-              Looking for Members
+              <UsersThree size={18} aria-hidden="true" />
+              <span>Looking for Members</span>
             </button>
             <button
               type="button"
               className={`tab-btn ${hackfinderTab === 'individuals' ? 'active' : ''}`}
               onClick={() => setHackfinderTab('individuals')}
             >
-              Looking for Teams
+              <UserCircle size={18} aria-hidden="true" />
+              <span>Looking for Teams</span>
             </button>
           </div>
 
@@ -1011,7 +1089,10 @@ export default function App() {
                       <div className="post-card-header">
                         <div>
                           <h3 className="post-card-title">{post.title}</h3>
-                          <span className="post-card-type">Team</span>
+                          <span className="post-card-type">
+                            <UsersThree size={16} aria-hidden="true" />
+                            <span>Team</span>
+                          </span>
                         </div>
                       </div>
                       <p className="post-card-description">{post.description}</p>
@@ -1036,7 +1117,8 @@ export default function App() {
                         </div>
                         <div className="post-card-actions">
                           <a href={`mailto:${post.contact}`} className="post-card-contact">
-                            {post.contact}
+                            <EnvelopeSimple size={16} aria-hidden="true" />
+                            <span>{post.contact}</span>
                           </a>
                           {isAdmin && (
                             <button
@@ -1068,7 +1150,10 @@ export default function App() {
                       <div className="post-card-header">
                         <div>
                           <h3 className="post-card-title">{post.title}</h3>
-                          <span className="post-card-type">Individual</span>
+                          <span className="post-card-type">
+                            <UserCircle size={16} aria-hidden="true" />
+                            <span>Individual</span>
+                          </span>
                         </div>
                       </div>
                       <p className="post-card-description">{post.description}</p>
@@ -1087,7 +1172,8 @@ export default function App() {
                         </div>
                         <div className="post-card-actions">
                           <a href={`mailto:${post.contact}`} className="post-card-contact">
-                            {post.contact}
+                            <EnvelopeSimple size={16} aria-hidden="true" />
+                            <span>{post.contact}</span>
                           </a>
                           {isAdmin && (
                             <button
@@ -1136,7 +1222,14 @@ export default function App() {
                             <div>
                               <h3>{pendingEvent.title}</h3>
                               <p className="admin-card-meta">
-                                📅 {formatDate(pendingEvent.date)} • ⏰ {pendingEvent.time}
+                                <span className="admin-card-meta-item">
+                                  <CalendarBlank size={16} weight="bold" aria-hidden="true" />
+                                  <span>{formatDate(pendingEvent.date)}</span>
+                                </span>
+                                <span className="admin-card-meta-item">
+                                  <Clock size={16} weight="bold" aria-hidden="true" />
+                                  <span>{pendingEvent.time}</span>
+                                </span>
                               </p>
                             </div>
                             <span className="admin-badge">{pendingEvent.department}</span>
