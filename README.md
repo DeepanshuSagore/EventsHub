@@ -63,6 +63,7 @@ Create the following files locally (they are git-ignored):
 	VITE_FIREBASE_PROJECT_ID=replace-me
 	VITE_FIREBASE_APP_ID=replace-me
 	VITE_FIREBASE_MESSAGING_SENDER_ID=replace-me
+	VITE_API_BASE_URL=http://localhost:5001
 	```
 
 - `./server/.env`
@@ -94,6 +95,14 @@ The API listens on port `5000` by default and exposes:
 - `PUT /api/profile/me` — updates profile fields (`name`, `studentId`, `department`, `skills`, etc.).
 
 Attach the Firebase ID token to requests as `Authorization: Bearer <token>`.
+
+### Deployment checklist
+
+When deploying the frontend (for example on Vercel) and backend (for example on Render):
+
+- Set the `VITE_API_BASE_URL` project variable on the frontend host to the fully-qualified backend URL, e.g. `https://eventshub-31is.onrender.com`.
+- Ensure the backend `ALLOWED_ORIGINS` environment variable includes your frontend origin (e.g. `https://events-hub.vercel.app`).
+- Redeploy both services after updating environment variables so the changes are baked into the build.
 
 ## Notes
 
