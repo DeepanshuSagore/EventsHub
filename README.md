@@ -110,6 +110,17 @@ When deploying the frontend (for example on Vercel) and backend (for example on 
 - Ensure the backend `ALLOWED_ORIGINS` environment variable includes your frontend origin and any local development URLs (e.g. `https://events-hub.vercel.app,http://localhost:5173`).
 - Redeploy both services after updating environment variables so the changes are baked into the build.
 
+### Seed sample content
+
+Want instant data for demos? After configuring MongoDB/Firebase env vars, run the seeder to publish five example events and four HackFinder posts:
+
+```bash
+cd server
+node scripts/seedSampleContent.js
+```
+
+The script upserts by title/date (events) and title/type (HackFinder posts), so you can run it repeatedly without creating duplicates.
+
 ## Notes
 
 - Application state is currently persisted to `localStorage` under the `collegeEventsData` key while the new backend integration is in progress.
