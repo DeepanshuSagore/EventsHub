@@ -1,6 +1,12 @@
 # College Events Hub
 
-A React-based single-page application that showcases college events, hackathon collaboration posts, and student profiles. This project is a direct conversion of the original HTML/CSS/JavaScript implementation into a modern React app while preserving the existing design and behaviour.
+EventsHub is a full-stack platform for college communities to share events, find hackathon teammates, and manage student profiles. The React SPA talks to an Express/MongoDB API and Firebase Authentication to deliver:
+
+- **Event discovery & submission** – browse featured and upcoming events, filter by department, and (for event heads/admins) submit new events for moderation.
+- **HackFinder marketplace** – publish or browse team/individual posts to assemble hackathon squads, complete with skills, department, and contact info.
+- **Role-aware dashboards** – students, event heads, and admins see tailored actions (e.g., admin moderation queues, profile editing).
+- **Profile management** – authenticated users sync their Firebase identity to MongoDB and maintain academic/skill details.
+- **Google sign-in** – Firebase-hosted authentication flows with backend token verification and role assignment.
 
 ## Prerequisites
 
