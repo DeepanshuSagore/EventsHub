@@ -1,4 +1,16 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5001').replace(/\/$/, '');
+const rawBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5001';
+const API_BASE_URL = rawBaseUrl.replace(/\/$/, '');
+
+if (import.meta.env.PROD && typeof window !== 'undefined') {
+  const hostname = window.location.hostname;
+  const isLocalHost = ['localhost', '127.0.0.1', '::1'].includes(hostname);
+
+  if (!isLocalHost && API_BASE_URL.startsWith('http://localhost')) {
+    console.error(
+      'API_BASE_URL is still pointing to a localhost address in production. Set VITE_API_BASE_URL to your deployed backend URL before building.'
+    );
+  }
+}
 
 async function apiFetch(path, { method = 'GET', body, token, headers = {} } = {}) {
   const config = {
