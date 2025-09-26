@@ -677,7 +677,19 @@ export default function App() {
       <nav className="navbar">
         <div className="nav-container">
           <div className="nav-brand">
-            <h2>EventsHub</h2>
+            <h2
+              role="button"
+              tabIndex={0}
+              onClick={() => handleNavigate('home')}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  handleNavigate('home');
+                }
+              }}
+            >
+              EventsHub
+            </h2>
           </div>
           <button
             type="button"

@@ -837,6 +837,15 @@ select.form-control {
   font-weight: var(--font-weight-bold);
 }
 
+.nav-brand h2[role='button'] {
+  cursor: pointer;
+}
+
+.nav-brand h2[role='button']:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 4px;
+}
+
 .nav-links {
   display: flex;
   align-items: center;
