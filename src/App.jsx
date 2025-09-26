@@ -1,21 +1,32 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { initialData } from './data';
-import { formatDate, generateId } from './utils';
+import { formatDate } from './utils';
 import Modal from './components/Modal';
-
-const LOCAL_STORAGE_KEY = 'collegeEventsData';
-const AUTH_STORAGE_KEY = 'collegeEventsAuth';
-const ADMIN_PASSWORD = 'ThisAppleIsMajor';
+import { useAuth } from './contexts/AuthContext.jsx';
+import {
+  API_BASE_URL,
+  fetchEvents,
+  createEvent as createEventApi,
+  fetchHackFinderPosts,
+  createHackFinderPost as createHackFinderPostApi,
+  fetchAdminQueues,
+  approveEvent as approveEventApi,
+  rejectEvent as rejectEventApi,
+  deleteEvent as deleteEventApi,
+  approveHackFinderPost as approveHackFinderPostApi,
+  rejectHackFinderPost as rejectHackFinderPostApi,
+  deleteHackFinderPost as deleteHackFinderPostApi
+} from './services/api.js';
 const ROLES = {
   ADMIN: 'admin',
   EVENT_HEAD: 'eventHead',
-  USER: 'user'
+  STUDENT: 'student'
 };
 
 const ROLE_LABELS = {
   [ROLES.ADMIN]: 'Admin',
   [ROLES.EVENT_HEAD]: 'Event Head',
-  [ROLES.USER]: 'Student'
+  [ROLES.STUDENT]: 'Student'
 };
 
 const EVENT_FORM_INITIAL_STATE = {
@@ -45,22 +56,54 @@ const PROFILE_FORM_INITIAL_STATE = {
   interests: ''
 };
 
-const LOGIN_FORM_INITIAL_STATE = {
-  role: '',
-  name: '',
-  email: '',
-  password: ''
-};
+function getAuthErrorMessage(error, mode) {
+  if (!error) {
+    return '';
+  }
 
-const AUTH_STATE_INITIAL = {
-  role: null,
-  name: '',
-  email: ''
-};
+  const code = error?.code ?? '';
+
+  if (code === 'network-error' || error?.name === 'TypeError') {
+    return (
+      error?.message ??
+      `We couldn't reach the EventsHub API at ${API_BASE_URL}. Please make sure the backend server is running.`
+    );
+  }
+
+  switch (code) {
+    case 'auth/network-request-failed':
+      return 'Network connection failed. Check your internet connection and try again.';
+    case 'auth/popup-blocked':
+      return 'Your browser blocked the sign-in popup. Allow popups for this site or try again.';
+    case 'auth/popup-closed-by-user':
+    case 'auth/cancelled-popup-request':
+      return 'The Google sign-in window was closed before completing.';
+    case 'auth/operation-not-allowed':
+      return 'Email/password sign-in is disabled for this project. Enable it in your Firebase console.';
+    case 'auth/email-already-in-use':
+      return 'An account with this email already exists. Try logging in instead.';
+    case 'auth/invalid-email':
+      return 'That email address looks invalid. Please double-check and try again.';
+    case 'auth/weak-password':
+      return 'Passwords must be at least 6 characters long.';
+    case 'auth/user-not-found':
+      return 'No account matches that email. You may need to register first.';
+    case 'auth/wrong-password':
+      return 'Incorrect password. Please try again.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please wait a bit and try again.';
+    case 'auth/user-disabled':
+      return 'This account has been disabled. Contact an administrator for help.';
+    default:
+      return error?.message ?? `Unable to ${mode === 'register' ? 'register' : 'log in'}. Please try again.`;
+  }
+}
 
 function normalizeAppData(data) {
   return {
     ...data,
+    events: Array.isArray(data.events) ? data.events : [],
+    hackfinderPosts: Array.isArray(data.hackfinderPosts) ? data.hackfinderPosts : [],
     pendingEvents: Array.isArray(data.pendingEvents) ? data.pendingEvents : [],
     pendingHackfinderPosts: Array.isArray(data.pendingHackfinderPosts)
       ? data.pendingHackfinderPosts
@@ -69,27 +112,27 @@ function normalizeAppData(data) {
 }
 
 export default function App() {
-  const [appData, setAppData] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = window.localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          return normalizeAppData({
-            ...initialData,
-            ...parsed,
-            currentUser: {
-              ...initialData.currentUser,
-              ...(parsed.currentUser ?? {})
-            }
-          });
-        } catch (error) {
-          console.error('Failed to parse saved app data:', error);
-        }
-      }
-    }
-    return normalizeAppData(initialData);
-  });
+  const {
+    user: authUser,
+    profile,
+    initializing: authInitializing,
+    actionLoading: authLoading,
+    error: authError,
+    isAuthenticated,
+    logout: logoutAccount,
+    loginWithGoogle: loginWithGoogleAccount,
+    updateProfile: updateProfileAccount,
+    getToken
+  } = useAuth();
+  const [appData, setAppData] = useState(() =>
+    normalizeAppData({
+      ...initialData,
+      events: [],
+      hackfinderPosts: [],
+      pendingEvents: [],
+      pendingHackfinderPosts: []
+    })
+  );
 
   const [currentPage, setCurrentPage] = useState('home');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -100,48 +143,118 @@ export default function App() {
   const [eventForm, setEventForm] = useState(EVENT_FORM_INITIAL_STATE);
   const [postForm, setPostForm] = useState(POST_FORM_INITIAL_STATE);
   const [profileForm, setProfileForm] = useState(PROFILE_FORM_INITIAL_STATE);
-  const [loginForm, setLoginForm] = useState(LOGIN_FORM_INITIAL_STATE);
-  const [authState, setAuthState] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = window.localStorage.getItem(AUTH_STORAGE_KEY);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          return {
-            ...AUTH_STATE_INITIAL,
-            ...parsed
-          };
-        } catch (error) {
-          console.error('Failed to parse auth state:', error);
-        }
-      }
-    }
-    return AUTH_STATE_INITIAL;
-  });
-  const [loginError, setLoginError] = useState('');
+  const [authMessage, setAuthMessage] = useState('');
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [hackfinderLoading, setHackfinderLoading] = useState(true);
+  const [queuesLoading, setQueuesLoading] = useState(false);
+  const [eventSubmitting, setEventSubmitting] = useState(false);
+  const [postSubmitting, setPostSubmitting] = useState(false);
+  const [moderationLoading, setModerationLoading] = useState(false);
+  const [dataError, setDataError] = useState(null);
 
-  const isAdmin = authState.role === ROLES.ADMIN;
-  const isEventHead = authState.role === ROLES.EVENT_HEAD;
-  const isUserRole = authState.role === ROLES.USER;
+  const userRole = authUser?.role ?? null;
+  const isAdmin = userRole === ROLES.ADMIN;
+  const isEventHead = userRole === ROLES.EVENT_HEAD;
+  const isStudent = userRole === ROLES.STUDENT;
+
+  const refreshEvents = useCallback(async () => {
+    setEventsLoading(true);
+    try {
+      const data = await fetchEvents();
+      setAppData((prev) => ({
+        ...prev,
+        events: Array.isArray(data?.events) ? data.events : []
+      }));
+      setDataError((prev) => (prev?.context === 'events' ? null : prev));
+    } catch (error) {
+      console.error('Failed to load events', error);
+      setDataError({ context: 'events', error });
+    } finally {
+      setEventsLoading(false);
+    }
+  }, []);
+
+  const refreshHackfinderPosts = useCallback(async () => {
+    setHackfinderLoading(true);
+    try {
+      const data = await fetchHackFinderPosts();
+      setAppData((prev) => ({
+        ...prev,
+        hackfinderPosts: Array.isArray(data?.posts) ? data.posts : []
+      }));
+      setDataError((prev) => (prev?.context === 'hackfinder' ? null : prev));
+    } catch (error) {
+      console.error('Failed to load hackfinder posts', error);
+      setDataError({ context: 'hackfinder', error });
+    } finally {
+      setHackfinderLoading(false);
+    }
+  }, []);
+
+  const refreshAdminQueues = useCallback(async () => {
+    if (!isAdmin) {
+      setAppData((prev) => ({
+        ...prev,
+        pendingEvents: [],
+        pendingHackfinderPosts: []
+      }));
+      setDataError((prev) => (prev?.context === 'queues' ? null : prev));
+      return;
+    }
+
+    setQueuesLoading(true);
+    try {
+      const token = await getToken();
+      if (!token) {
+        throw new Error('Authentication required to manage pending submissions.');
+      }
+      const data = await fetchAdminQueues({ token });
+      setAppData((prev) => ({
+        ...prev,
+        pendingEvents: Array.isArray(data?.events) ? data.events : [],
+        pendingHackfinderPosts: Array.isArray(data?.hackfinderPosts) ? data.hackfinderPosts : []
+      }));
+      setDataError((prev) => (prev?.context === 'queues' ? null : prev));
+    } catch (error) {
+      console.error('Failed to load admin queues', error);
+      setDataError({ context: 'queues', error });
+    } finally {
+      setQueuesLoading(false);
+    }
+  }, [getToken, isAdmin]);
 
   const canSubmitEvent = isAdmin || isEventHead;
-  const canSubmitPost = isAdmin || isEventHead || isUserRole;
+  const canSubmitPost = isAdmin || isEventHead || isStudent;
+
+  const currentProfile = useMemo(() => {
+    const base = appData.currentUser ?? {};
+    return {
+      ...base,
+      name: profile?.name ?? base.name ?? '',
+      email: profile?.contactEmail ?? profile?.email ?? base.email ?? '',
+      contactEmail: profile?.contactEmail ?? base.contactEmail ?? base.email ?? '',
+      department: profile?.department ?? base.department ?? '',
+      year: profile?.year ?? base.year ?? '',
+      skills: profile?.skills ?? base.skills ?? [],
+      interests: profile?.interests ?? base.interests ?? []
+    };
+  }, [appData.currentUser, profile]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(appData));
-    }
-  }, [appData]);
+    setProfileForm(mapProfileToForm(profile));
+  }, [profile]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authState));
-    }
-  }, [authState]);
+    refreshEvents();
+  }, [refreshEvents]);
 
   useEffect(() => {
-    setProfileForm(mapProfileToForm(appData.currentUser));
-  }, [appData.currentUser]);
+    refreshHackfinderPosts();
+  }, [refreshHackfinderPosts]);
+
+  useEffect(() => {
+    refreshAdminQueues();
+  }, [refreshAdminQueues]);
 
   const featuredEvents = useMemo(
     () => appData.events.filter((event) => event.featured),
@@ -175,9 +288,9 @@ export default function App() {
   );
 
   const registeredEvents = useMemo(() => {
-    const registeredIds = new Set(appData.currentUser.eventsRegistered);
-    return appData.events.filter((event) => registeredIds.has(event.id));
-  }, [appData.currentUser.eventsRegistered, appData.events]);
+    const registeredIds = new Set((currentProfile.eventsRegistered ?? []).map((id) => id?.toString()));
+    return appData.events.filter((event) => registeredIds.has(event.id?.toString()));
+  }, [currentProfile.eventsRegistered, appData.events]);
 
   const pendingEvents = appData.pendingEvents ?? [];
   const pendingHackfinderPosts = appData.pendingHackfinderPosts ?? [];
@@ -199,9 +312,14 @@ export default function App() {
   }, [pendingHackfinderPosts]);
 
   function mapProfileToForm(profile) {
+    if (!profile) {
+      return { ...PROFILE_FORM_INITIAL_STATE };
+    }
+
     return {
+      ...PROFILE_FORM_INITIAL_STATE,
       name: profile.name ?? '',
-      email: profile.email ?? '',
+      email: profile.contactEmail ?? profile.email ?? '',
       department: profile.department ?? '',
       year: profile.year ?? '',
       skills: (profile.skills ?? []).join(', '),
@@ -251,12 +369,11 @@ export default function App() {
     }
 
     if (modalName === 'profile') {
-      setProfileForm(mapProfileToForm(appData.currentUser));
+      setProfileForm(mapProfileToForm(profile));
     }
 
     if (modalName === 'login') {
-      setLoginForm(LOGIN_FORM_INITIAL_STATE);
-      setLoginError('');
+      setAuthMessage('');
     }
 
     setActiveModal(modalName);
@@ -266,157 +383,168 @@ export default function App() {
     setActiveModal(null);
   }
 
-  function handleEventFormChange(event) {
+  const handleEventFormChange = useCallback((event) => {
     const { name, value } = event.target;
-    setEventForm((prev) => ({ ...prev, [name]: value }));
-  }
+    setEventForm((prev) => ({
+      ...prev,
+      [name]: value
+    }));
+  }, []);
 
-  function handlePostFormChange(event) {
+  const handlePostFormChange = useCallback((event) => {
     const { name, value } = event.target;
-    setPostForm((prev) => ({ ...prev, [name]: value }));
-  }
+    setPostForm((prev) => {
+      const next = {
+        ...prev,
+        [name]: value
+      };
 
-  function handleProfileFormChange(event) {
-    const { name, value } = event.target;
-    setProfileForm((prev) => ({ ...prev, [name]: value }));
-  }
-
-  function handleLoginFormChange(event) {
-    const { name, value } = event.target;
-    setLoginForm((prev) => {
-      if (name === 'role') {
-        return {
-          ...LOGIN_FORM_INITIAL_STATE,
-          role: value
-        };
+      if (name === 'type' && value !== 'team') {
+        next.teamSize = '';
       }
 
-      return { ...prev, [name]: value };
+      return next;
     });
-    setLoginError('');
+  }, []);
+
+  const handleProfileFormChange = useCallback((event) => {
+    const { name, value } = event.target;
+    setProfileForm((prev) => ({
+      ...prev,
+      [name]: value
+    }));
+  }, []);
+
+  async function handleGoogleSignIn() {
+    try {
+      setAuthMessage('');
+      await loginWithGoogleAccount();
+      closeModal();
+    } catch (error) {
+      console.error('Google sign-in failed', error);
+      setAuthMessage(getAuthErrorMessage(error, 'login'));
+    }
   }
 
-  function handleEventSubmission(event) {
+  async function handleEventSubmission(event) {
     event.preventDefault();
     if (!canSubmitEvent) {
       window.alert('Only Admin or Event Head accounts can submit events.');
       return;
     }
 
-    const eventId = generateId(
-      appData.events,
-      appData.hackfinderPosts,
-      appData.pendingEvents,
-      appData.pendingHackfinderPosts
-    );
-
-    const baseEvent = {
-      id: eventId,
-      title: eventForm.title,
-      date: eventForm.date,
-      time: eventForm.time,
-      department: eventForm.department,
-      description: eventForm.description,
-      registrationLink: eventForm.registrationLink,
-      featured: false
-    };
-
-    if (isAdmin) {
-      setAppData((prev) => ({
-        ...prev,
-        events: [...prev.events, baseEvent]
-      }));
-
-      closeModal();
-      window.alert('Event published successfully!');
+    const requiredFields = ['title', 'date', 'time', 'department', 'description', 'registrationLink'];
+    const missingField = requiredFields.find((field) => !eventForm[field]?.trim());
+    if (missingField) {
+      window.alert('Please complete all event fields before submitting.');
       return;
     }
 
-    const pendingEvent = {
-      ...baseEvent,
-      submittedAt: new Date().toISOString(),
-      submittedByRole: authState.role,
-      submittedByName: authState.name || appData.currentUser.name,
-      submittedByEmail: authState.email || appData.currentUser.email
-    };
+    setEventSubmitting(true);
+    try {
+      const token = await getToken(true);
+      if (!token) {
+        throw new Error('Authentication required to submit events.');
+      }
 
-    setAppData((prev) => ({
-      ...prev,
-      pendingEvents: [...prev.pendingEvents, pendingEvent]
-    }));
+      const payload = {
+        title: eventForm.title.trim(),
+        date: eventForm.date.trim(),
+        time: eventForm.time.trim(),
+        department: eventForm.department.trim(),
+        description: eventForm.description.trim(),
+        registrationLink: eventForm.registrationLink.trim(),
+        featured: false
+      };
 
-    closeModal();
-    window.alert('Event submitted for admin approval.');
+      const { event: createdEvent } = await createEventApi({ token, data: payload });
+
+      if (createdEvent?.status === 'published') {
+        await refreshEvents();
+        window.alert('Event published successfully!');
+      } else {
+        await refreshAdminQueues();
+        if (!isAdmin) {
+          window.alert('Event submitted for admin approval.');
+        }
+      }
+
+      closeModal();
+      setEventForm(EVENT_FORM_INITIAL_STATE);
+    } catch (error) {
+      console.error('Failed to submit event', error);
+      window.alert(error?.message ?? 'Failed to submit event. Please try again.');
+    } finally {
+      setEventSubmitting(false);
+    }
   }
 
-  function handlePostSubmission(event) {
+  async function handlePostSubmission(event) {
     event.preventDefault();
 
-    const skills = postForm.skills
-      .split(',')
-      .map((skill) => skill.trim())
-      .filter(Boolean);
     if (!canSubmitPost) {
       window.alert('Please log in to submit HackFinder posts.');
       return;
     }
 
-    const postId = generateId(
-      appData.events,
-      appData.hackfinderPosts,
-      appData.pendingEvents,
-      appData.pendingHackfinderPosts
-    );
-
-    const basePost = {
-      id: postId,
-      type: postForm.type,
-      title: postForm.title,
-      description: postForm.description,
-      skills,
-      contact: postForm.contact,
-      author: appData.currentUser.name,
-      department: appData.currentUser.department
-    };
-
-    if (postForm.type === 'team' && postForm.teamSize) {
-      basePost.teamSize = postForm.teamSize;
-    }
-
-    if (isAdmin) {
-      const publishedPost = {
-        ...basePost,
-        posted: new Date().toISOString().split('T')[0]
-      };
-
-      setAppData((prev) => ({
-        ...prev,
-        hackfinderPosts: [...prev.hackfinderPosts, publishedPost]
-      }));
-
-      closeModal();
-      window.alert('Post published successfully!');
+    if (!postForm.type) {
+      window.alert('Please select whether you are a team or an individual.');
       return;
     }
 
-    const pendingPost = {
-      ...basePost,
-      submittedAt: new Date().toISOString(),
-      submittedByRole: authState.role,
-      submittedByName: authState.name || appData.currentUser.name,
-      submittedByEmail: authState.email || appData.currentUser.email
-    };
+    if (!postForm.title.trim() || !postForm.description.trim() || !postForm.contact.trim()) {
+      window.alert('Please provide a title, description, and contact info for your post.');
+      return;
+    }
 
-    setAppData((prev) => ({
-      ...prev,
-      pendingHackfinderPosts: [...prev.pendingHackfinderPosts, pendingPost]
-    }));
+    setPostSubmitting(true);
 
-    closeModal();
-    window.alert('Post submitted for admin approval.');
+    try {
+      const token = await getToken(true);
+      if (!token) {
+        throw new Error('Authentication required to submit HackFinder posts.');
+      }
+
+      const skills = postForm.skills
+        .split(',')
+        .map((skill) => skill.trim())
+        .filter(Boolean);
+
+      const payload = {
+        type: postForm.type.trim(),
+        title: postForm.title.trim(),
+        description: postForm.description.trim(),
+        skills,
+        contact: postForm.contact.trim(),
+        teamSize:
+          postForm.type === 'team' && postForm.teamSize ? postForm.teamSize.trim() : undefined,
+        author: profile?.name || currentProfile.name || 'Anonymous Member',
+        department: profile?.department || currentProfile.department || 'General'
+      };
+
+      const { post } = await createHackFinderPostApi({ token, data: payload });
+
+      if (post?.status === 'published') {
+        await refreshHackfinderPosts();
+        window.alert('Post published successfully!');
+      } else {
+        await refreshAdminQueues();
+        if (!isAdmin) {
+          window.alert('Post submitted for admin approval.');
+        }
+      }
+
+      closeModal();
+      setPostForm(POST_FORM_INITIAL_STATE);
+    } catch (error) {
+      console.error('Failed to submit HackFinder post', error);
+      window.alert(error?.message ?? 'Failed to submit HackFinder post. Please try again.');
+    } finally {
+      setPostSubmitting(false);
+    }
   }
 
-  function handleProfileSubmission(event) {
+  async function handleProfileSubmission(event) {
     event.preventDefault();
 
     const skills = profileForm.skills
@@ -429,172 +557,119 @@ export default function App() {
       .map((interest) => interest.trim())
       .filter(Boolean);
 
-    setAppData((prev) => ({
-      ...prev,
-      currentUser: {
-        ...prev.currentUser,
+    try {
+      await updateProfileAccount({
         name: profileForm.name,
-        email: profileForm.email,
         department: profileForm.department,
         year: profileForm.year,
         skills,
-        interests
-      }
-    }));
-
-    closeModal();
-    window.alert('Profile updated successfully!');
-  }
-
-  function handleLoginSubmission(event) {
-    event.preventDefault();
-    if (!loginForm.role) {
-      setLoginError('Please select a role to continue.');
-      return;
-    }
-
-    if (loginForm.role === ROLES.ADMIN) {
-      if (loginForm.password !== ADMIN_PASSWORD) {
-        setLoginError('Incorrect admin password.');
-        return;
-      }
-
-      setAuthState({
-        role: ROLES.ADMIN,
-        name: 'Admin',
-        email: ''
+        interests,
+        contactEmail: profileForm.email
       });
 
-      setLoginForm(LOGIN_FORM_INITIAL_STATE);
       closeModal();
-      window.alert('Logged in as Admin.');
-      return;
+      window.alert('Profile updated successfully!');
+    } catch (error) {
+      console.error('Failed to update profile', error);
+      window.alert(error?.message ?? 'Failed to update profile. Please try again.');
     }
-
-    if (!loginForm.name.trim()) {
-      setLoginError('Please enter your name.');
-      return;
-    }
-
-    setAuthState({
-      role: loginForm.role,
-      name: loginForm.name.trim(),
-      email: loginForm.email.trim()
-    });
-
-    setLoginForm(LOGIN_FORM_INITIAL_STATE);
-    closeModal();
-    window.alert('Login successful!');
   }
 
-  function handleLogout() {
-    setAuthState(AUTH_STATE_INITIAL);
-    if (currentPage === 'admin') {
-      setCurrentPage('home');
-    }
-    window.alert('Logged out successfully.');
-  }
-
-  function sanitizePendingItem(item) {
-    const cleaned = { ...item };
-    delete cleaned.submittedAt;
-    delete cleaned.submittedByRole;
-    delete cleaned.submittedByName;
-    delete cleaned.submittedByEmail;
-    return cleaned;
-  }
-
-  function handleApproveEvent(eventId) {
-    let approved = false;
-    setAppData((prev) => {
-      const pendingEvent = prev.pendingEvents.find((item) => item.id === eventId);
-      if (!pendingEvent) {
-        return prev;
+  async function handleLogout() {
+    try {
+      await logoutAccount();
+      if (currentPage === 'admin') {
+        setCurrentPage('home');
       }
-
-      approved = true;
-      const nextPending = prev.pendingEvents.filter((item) => item.id !== eventId);
-      const publishedEvent = sanitizePendingItem(pendingEvent);
-
-      return {
-        ...prev,
-        events: [...prev.events, publishedEvent],
-        pendingEvents: nextPending
-      };
-    });
-
-    if (approved) {
-      window.alert('Event approved and published.');
+    } catch (error) {
+      console.error('Logout failed', error);
+      window.alert(error?.message ?? 'Logout failed. Please try again.');
     }
   }
 
-  function handleRejectEvent(eventId) {
-    let removed = false;
-    setAppData((prev) => {
-      if (!prev.pendingEvents.some((item) => item.id === eventId)) {
-        return prev;
+  async function withModeration(action, successMessage) {
+    setModerationLoading(true);
+    try {
+      await action();
+      if (successMessage) {
+        window.alert(successMessage);
       }
-
-      removed = true;
-      return {
-        ...prev,
-        pendingEvents: prev.pendingEvents.filter((item) => item.id !== eventId)
-      };
-    });
-
-    if (removed) {
-      window.alert('Event request rejected.');
+    } catch (error) {
+      console.error('Moderation action failed', error);
+      window.alert(error?.message ?? 'Action failed. Please try again.');
+    } finally {
+      setModerationLoading(false);
     }
   }
 
-  function handleApprovePost(postId) {
-    let approved = false;
-    setAppData((prev) => {
-      const pendingPost = prev.pendingHackfinderPosts.find((item) => item.id === postId);
-      if (!pendingPost) {
-        return prev;
+  async function handleApproveEvent(eventId) {
+    await withModeration(async () => {
+      const token = await getToken(true);
+      if (!token) {
+        throw new Error('Authentication expired. Please sign in again.');
       }
-
-      approved = true;
-      const nextPending = prev.pendingHackfinderPosts.filter((item) => item.id !== postId);
-      const publishedPost = {
-        ...sanitizePendingItem(pendingPost),
-        posted: new Date().toISOString().split('T')[0]
-      };
-
-      return {
-        ...prev,
-        hackfinderPosts: [...prev.hackfinderPosts, publishedPost],
-        pendingHackfinderPosts: nextPending
-      };
-    });
-
-    if (approved) {
-      window.alert('HackFinder post approved and published.');
-    }
+      await approveEventApi({ token, eventId });
+      await Promise.all([refreshEvents(), refreshAdminQueues()]);
+    }, 'Event approved and published.');
   }
 
-  function handleRejectPost(postId) {
-    let removed = false;
-    setAppData((prev) => {
-      if (!prev.pendingHackfinderPosts.some((item) => item.id === postId)) {
-        return prev;
+  async function handleRejectEvent(eventId) {
+    await withModeration(async () => {
+      const token = await getToken(true);
+      if (!token) {
+        throw new Error('Authentication expired. Please sign in again.');
       }
-
-      removed = true;
-      return {
-        ...prev,
-        pendingHackfinderPosts: prev.pendingHackfinderPosts.filter((item) => item.id !== postId)
-      };
-    });
-
-    if (removed) {
-      window.alert('HackFinder post rejected.');
-    }
+      await rejectEventApi({ token, eventId });
+      await refreshAdminQueues();
+    }, 'Event request rejected.');
   }
 
-  const roleBadgeLabel = authState.role
-    ? `${ROLE_LABELS[authState.role]}${authState.name ? ` • ${authState.name}` : ''}`
+  async function handleDeleteEvent(eventId) {
+    await withModeration(async () => {
+      const token = await getToken(true);
+      if (!token) {
+        throw new Error('Authentication expired. Please sign in again.');
+      }
+      await deleteEventApi({ token, eventId });
+      await Promise.all([refreshEvents(), refreshAdminQueues()]);
+    }, 'Event deleted permanently.');
+  }
+
+  async function handleApprovePost(postId) {
+    await withModeration(async () => {
+      const token = await getToken(true);
+      if (!token) {
+        throw new Error('Authentication expired. Please sign in again.');
+      }
+      await approveHackFinderPostApi({ token, postId });
+      await Promise.all([refreshHackfinderPosts(), refreshAdminQueues()]);
+    }, 'HackFinder post approved and published.');
+  }
+
+  async function handleRejectPost(postId) {
+    await withModeration(async () => {
+      const token = await getToken(true);
+      if (!token) {
+        throw new Error('Authentication expired. Please sign in again.');
+      }
+      await rejectHackFinderPostApi({ token, postId });
+      await refreshAdminQueues();
+    }, 'HackFinder post rejected.');
+  }
+
+  async function handleDeletePost(postId) {
+    await withModeration(async () => {
+      const token = await getToken(true);
+      if (!token) {
+        throw new Error('Authentication expired. Please sign in again.');
+      }
+      await deleteHackFinderPostApi({ token, postId });
+      await Promise.all([refreshHackfinderPosts(), refreshAdminQueues()]);
+    }, 'HackFinder post deleted permanently.');
+  }
+
+  const roleBadgeLabel = userRole
+    ? `${ROLE_LABELS[userRole] ?? 'Member'}${currentProfile.name ? ` • ${currentProfile.name}` : ''}`
     : '';
 
   return (
@@ -663,13 +738,14 @@ export default function App() {
               </li>
             )}
             <li className="nav-auth">
-              {authState.role ? (
+              {isAuthenticated ? (
                 <>
                   <span className="nav-role-badge">{roleBadgeLabel}</span>
                   <button
                     type="button"
                     className="btn btn--outline btn--sm"
                     onClick={handleLogout}
+                    disabled={authLoading}
                   >
                     Log out
                   </button>
@@ -679,14 +755,27 @@ export default function App() {
                   type="button"
                   className="btn btn--primary btn--sm"
                   onClick={() => openModal('login')}
+                  disabled={authInitializing || authLoading}
                 >
-                  Login
+                  {authInitializing ? 'Loading…' : 'Login'}
                 </button>
               )}
             </li>
           </ul>
         </div>
       </nav>
+
+      {dataError?.error && (
+        <div className="global-error-banner">
+          <strong>Heads up:</strong>
+          <span>
+            {dataError.error?.code === 'network-error' || dataError.error?.name === 'TypeError'
+              ? `We couldn't reach the EventsHub API at ${API_BASE_URL}. Please make sure the backend server is running and refresh the page.`
+              : dataError.error?.message ??
+                `We couldn't load ${dataError.context ?? 'the latest data'}. Please check that the EventsHub API at ${API_BASE_URL} is running and try again.`}
+          </span>
+        </div>
+      )}
 
       <div id="home-page" className={`page ${currentPage === 'home' ? 'active' : ''}`}>
         <section className="hero">
@@ -744,26 +833,42 @@ export default function App() {
           <div className="container">
             <h2>Featured Events</h2>
             <div className="events-grid" id="featuredEventsGrid">
-              {featuredEvents.map((event) => (
-                <div className="event-card" key={event.id}>
-                  <div className="event-card-header">
-                    <h3 className="event-card-title">{event.title}</h3>
-                    <div className="event-card-meta">
-                      <span>📅 {formatDate(event.date)}</span>
-                      <span>⏰ {event.time}</span>
+              {eventsLoading ? (
+                <p className="empty-state">Loading featured events…</p>
+              ) : featuredEvents.length === 0 ? (
+                <p className="empty-state">No featured events yet. Check back soon!</p>
+              ) : (
+                featuredEvents.map((event) => (
+                  <div className="event-card" key={event.id}>
+                    <div className="event-card-header">
+                      <h3 className="event-card-title">{event.title}</h3>
+                      <div className="event-card-meta">
+                        <span>📅 {formatDate(event.date)}</span>
+                        <span>⏰ {event.time}</span>
+                      </div>
+                      <span className="event-card-department">{event.department}</span>
                     </div>
-                    <span className="event-card-department">{event.department}</span>
-                  </div>
-                  <div className="event-card-body">
-                    <p className="event-card-description">{event.description}</p>
-                    <div className="event-card-actions">
-                      <a href={event.registrationLink} target="_blank" rel="noreferrer" className="btn btn--primary">
-                        Register
-                      </a>
+                    <div className="event-card-body">
+                      <p className="event-card-description">{event.description}</p>
+                      <div className="event-card-actions">
+                        <a href={event.registrationLink} target="_blank" rel="noreferrer" className="btn btn--primary">
+                          Register
+                        </a>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            className="btn btn--outline"
+                            onClick={() => handleDeleteEvent(event.id)}
+                            disabled={moderationLoading}
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </section>
@@ -777,7 +882,7 @@ export default function App() {
               <button type="button" className="btn btn--primary" onClick={() => openModal('event')}>
                 Create Event
               </button>
-            ) : authState.role ? (
+            ) : isAuthenticated ? (
               <span className="page-note">Event creation is limited to Admin or Event Head accounts.</span>
             ) : (
               <button type="button" className="btn btn--outline" onClick={() => openModal('login')}>
@@ -809,26 +914,42 @@ export default function App() {
           </div>
 
           <div className="events-grid" id="eventsGrid">
-            {filteredEvents.map((event) => (
-              <div className="event-card" key={event.id}>
-                <div className="event-card-header">
-                  <h3 className="event-card-title">{event.title}</h3>
-                  <div className="event-card-meta">
-                    <span>📅 {formatDate(event.date)}</span>
-                    <span>⏰ {event.time}</span>
+            {eventsLoading ? (
+              <p className="empty-state">Loading events…</p>
+            ) : filteredEvents.length === 0 ? (
+              <p className="empty-state">No events match your filters yet.</p>
+            ) : (
+              filteredEvents.map((event) => (
+                <div className="event-card" key={event.id}>
+                  <div className="event-card-header">
+                    <h3 className="event-card-title">{event.title}</h3>
+                    <div className="event-card-meta">
+                      <span>📅 {formatDate(event.date)}</span>
+                      <span>⏰ {event.time}</span>
+                    </div>
+                    <span className="event-card-department">{event.department}</span>
                   </div>
-                  <span className="event-card-department">{event.department}</span>
-                </div>
-                <div className="event-card-body">
-                  <p className="event-card-description">{event.description}</p>
-                  <div className="event-card-actions">
-                    <a href={event.registrationLink} target="_blank" rel="noreferrer" className="btn btn--primary">
-                      Register
-                    </a>
+                  <div className="event-card-body">
+                    <p className="event-card-description">{event.description}</p>
+                    <div className="event-card-actions">
+                      <a href={event.registrationLink} target="_blank" rel="noreferrer" className="btn btn--primary">
+                        Register
+                      </a>
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          className="btn btn--outline"
+                          onClick={() => handleDeleteEvent(event.id)}
+                          disabled={moderationLoading}
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>
@@ -868,73 +989,109 @@ export default function App() {
           <div className="tab-content">
             <div id="teams-tab" className={`tab-pane ${hackfinderTab === 'teams' ? 'active' : ''}`}>
               <div className="posts-grid" id="teamsGrid">
-                {teamsPosts.map((post) => (
-                  <div className="post-card" key={post.id}>
-                    <div className="post-card-header">
-                      <div>
-                        <h3 className="post-card-title">{post.title}</h3>
-                        <span className="post-card-type">Team</span>
+                {hackfinderLoading ? (
+                  <p className="empty-state">Loading posts…</p>
+                ) : teamsPosts.length === 0 ? (
+                  <p className="empty-state">No teams are recruiting right now.</p>
+                ) : (
+                  teamsPosts.map((post) => (
+                    <div className="post-card" key={post.id}>
+                      <div className="post-card-header">
+                        <div>
+                          <h3 className="post-card-title">{post.title}</h3>
+                          <span className="post-card-type">Team</span>
+                        </div>
+                      </div>
+                      <p className="post-card-description">{post.description}</p>
+                      <div className="post-card-skills">
+                        {(post.skills ?? []).map((skill) => (
+                          <span key={skill} className="skill-tag">
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="post-card-footer">
+                        <div className="post-card-author">
+                          <strong>{post.author}</strong>
+                          <br />
+                          {post.department}
+                          {post.teamSize ? (
+                            <>
+                              <br />
+                              Team: {post.teamSize}
+                            </>
+                          ) : null}
+                        </div>
+                        <div className="post-card-actions">
+                          <a href={`mailto:${post.contact}`} className="post-card-contact">
+                            {post.contact}
+                          </a>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              className="btn btn--outline btn--sm"
+                              onClick={() => handleDeletePost(post.id)}
+                              disabled={moderationLoading}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <p className="post-card-description">{post.description}</p>
-                    <div className="post-card-skills">
-                      {post.skills.map((skill) => (
-                        <span key={skill} className="skill-tag">
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="post-card-footer">
-                      <div className="post-card-author">
-                        <strong>{post.author}</strong>
-                        <br />
-                        {post.department}
-                        {post.teamSize ? (
-                          <>
-                            <br />
-                            Team: {post.teamSize}
-                          </>
-                        ) : null}
-                      </div>
-                      <a href={`mailto:${post.contact}`} className="post-card-contact">
-                        {post.contact}
-                      </a>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
 
             <div id="individuals-tab" className={`tab-pane ${hackfinderTab === 'individuals' ? 'active' : ''}`}>
               <div className="posts-grid" id="individualsGrid">
-                {individualPosts.map((post) => (
-                  <div className="post-card" key={post.id}>
-                    <div className="post-card-header">
-                      <div>
-                        <h3 className="post-card-title">{post.title}</h3>
-                        <span className="post-card-type">Individual</span>
+                {hackfinderLoading ? (
+                  <p className="empty-state">Loading posts…</p>
+                ) : individualPosts.length === 0 ? (
+                  <p className="empty-state">No individual posts available yet.</p>
+                ) : (
+                  individualPosts.map((post) => (
+                    <div className="post-card" key={post.id}>
+                      <div className="post-card-header">
+                        <div>
+                          <h3 className="post-card-title">{post.title}</h3>
+                          <span className="post-card-type">Individual</span>
+                        </div>
+                      </div>
+                      <p className="post-card-description">{post.description}</p>
+                      <div className="post-card-skills">
+                        {(post.skills ?? []).map((skill) => (
+                          <span key={skill} className="skill-tag">
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="post-card-footer">
+                        <div className="post-card-author">
+                          <strong>{post.author}</strong>
+                          <br />
+                          {post.department}
+                        </div>
+                        <div className="post-card-actions">
+                          <a href={`mailto:${post.contact}`} className="post-card-contact">
+                            {post.contact}
+                          </a>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              className="btn btn--outline btn--sm"
+                              onClick={() => handleDeletePost(post.id)}
+                              disabled={moderationLoading}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <p className="post-card-description">{post.description}</p>
-                    <div className="post-card-skills">
-                      {post.skills.map((skill) => (
-                        <span key={skill} className="skill-tag">
-                          {skill}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="post-card-footer">
-                      <div className="post-card-author">
-                        <strong>{post.author}</strong>
-                        <br />
-                        {post.department}
-                      </div>
-                      <a href={`mailto:${post.contact}`} className="post-card-contact">
-                        {post.contact}
-                      </a>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           </div>
@@ -954,7 +1111,9 @@ export default function App() {
                   <h2>Pending Events</h2>
                   <span className="admin-count">{sortedPendingEvents.length}</span>
                 </div>
-                {sortedPendingEvents.length === 0 ? (
+                {queuesLoading ? (
+                  <p className="empty-state">Loading pending event submissions…</p>
+                ) : sortedPendingEvents.length === 0 ? (
                   <p className="empty-state">No pending event submissions at the moment.</p>
                 ) : (
                   <div className="admin-grid">
@@ -975,9 +1134,9 @@ export default function App() {
                             <div>
                               <dt>Submitted by</dt>
                               <dd>
-                                {pendingEvent.submittedByName || 'Unknown'}
-                                {pendingEvent.submittedByRole
-                                  ? ` (${ROLE_LABELS[pendingEvent.submittedByRole] ?? pendingEvent.submittedByRole})`
+                                {pendingEvent.submittedBy?.name || 'Unknown'}
+                                {pendingEvent.submittedBy?.role
+                                  ? ` (${ROLE_LABELS[pendingEvent.submittedBy.role] ?? pendingEvent.submittedBy.role})`
                                   : ''}
                               </dd>
                             </div>
@@ -987,7 +1146,7 @@ export default function App() {
                             </div>
                             <div>
                               <dt>Contact</dt>
-                              <dd>{pendingEvent.submittedByEmail || 'Not provided'}</dd>
+                              <dd>{pendingEvent.submittedBy?.email || 'Not provided'}</dd>
                             </div>
                           </dl>
                           <div className="admin-card-actions">
@@ -995,6 +1154,7 @@ export default function App() {
                               type="button"
                               className="btn btn--primary btn--sm"
                               onClick={() => handleApproveEvent(pendingEvent.id)}
+                              disabled={moderationLoading}
                             >
                               Approve
                             </button>
@@ -1002,8 +1162,17 @@ export default function App() {
                               type="button"
                               className="btn btn--outline btn--sm"
                               onClick={() => handleRejectEvent(pendingEvent.id)}
+                              disabled={moderationLoading}
                             >
                               Reject
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--outline btn--sm"
+                              onClick={() => handleDeleteEvent(pendingEvent.id)}
+                              disabled={moderationLoading}
+                            >
+                              Delete
                             </button>
                           </div>
                         </div>
@@ -1018,7 +1187,9 @@ export default function App() {
                   <h2>Pending HackFinder Posts</h2>
                   <span className="admin-count">{sortedPendingPosts.length}</span>
                 </div>
-                {sortedPendingPosts.length === 0 ? (
+                {queuesLoading ? (
+                  <p className="empty-state">Loading pending HackFinder submissions…</p>
+                ) : sortedPendingPosts.length === 0 ? (
                   <p className="empty-state">No pending HackFinder submissions right now.</p>
                 ) : (
                   <div className="admin-grid">
@@ -1048,9 +1219,9 @@ export default function App() {
                             <div>
                               <dt>Submitted by</dt>
                               <dd>
-                                {pendingPost.submittedByName || 'Unknown'}
-                                {pendingPost.submittedByRole
-                                  ? ` (${ROLE_LABELS[pendingPost.submittedByRole] ?? pendingPost.submittedByRole})`
+                                {pendingPost.submittedBy?.name || 'Unknown'}
+                                {pendingPost.submittedBy?.role
+                                  ? ` (${ROLE_LABELS[pendingPost.submittedBy.role] ?? pendingPost.submittedBy.role})`
                                   : ''}
                               </dd>
                             </div>
@@ -1068,6 +1239,7 @@ export default function App() {
                               type="button"
                               className="btn btn--primary btn--sm"
                               onClick={() => handleApprovePost(pendingPost.id)}
+                              disabled={moderationLoading}
                             >
                               Approve
                             </button>
@@ -1075,8 +1247,17 @@ export default function App() {
                               type="button"
                               className="btn btn--outline btn--sm"
                               onClick={() => handleRejectPost(pendingPost.id)}
+                              disabled={moderationLoading}
                             >
                               Reject
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--outline btn--sm"
+                              onClick={() => handleDeletePost(pendingPost.id)}
+                              disabled={moderationLoading}
+                            >
+                              Delete
                             </button>
                           </div>
                         </div>
@@ -1097,12 +1278,13 @@ export default function App() {
                 <div className="avatar-placeholder">👤</div>
               </div>
               <div className="profile-info">
-                <h1 id="profileName">{appData.currentUser.name}</h1>
+                <h1 id="profileName">{currentProfile.name || 'Your Name'}</h1>
                 <p id="profileDepartment">
-                  {appData.currentUser.department} • {appData.currentUser.year}
+                  {currentProfile.department || 'Department not set'}
+                  {currentProfile.year ? ` • ${currentProfile.year}` : ''}
                 </p>
                 <button type="button" className="btn btn--outline" onClick={() => openModal('profile')}>
-                  Edit Profile
+                  {isAuthenticated ? 'Edit Profile' : 'Log in to edit'}
                 </button>
               </div>
             </div>
@@ -1111,36 +1293,48 @@ export default function App() {
               <div className="profile-section">
                 <h3>Skills</h3>
                 <div className="skills-list" id="profileSkills">
-                  {appData.currentUser.skills.map((skill) => (
-                    <span key={skill} className="skill-badge">
-                      {skill}
-                    </span>
-                  ))}
+                  {currentProfile.skills?.length ? (
+                    currentProfile.skills.map((skill) => (
+                      <span key={skill} className="skill-badge">
+                        {skill}
+                      </span>
+                    ))
+                  ) : (
+                    <p className="empty-state">Add your skills to let others know your strengths.</p>
+                  )}
                 </div>
               </div>
 
               <div className="profile-section">
                 <h3>Interests</h3>
                 <div className="interests-list" id="profileInterests">
-                  {appData.currentUser.interests.map((interest) => (
-                    <span key={interest} className="interest-badge">
-                      {interest}
-                    </span>
-                  ))}
+                  {currentProfile.interests?.length ? (
+                    currentProfile.interests.map((interest) => (
+                      <span key={interest} className="interest-badge">
+                        {interest}
+                      </span>
+                    ))
+                  ) : (
+                    <p className="empty-state">Share what you’re curious about.</p>
+                  )}
                 </div>
               </div>
 
               <div className="profile-section">
                 <h3>Registered Events</h3>
                 <div className="registered-events" id="profileEvents">
-                  {registeredEvents.map((event) => (
-                    <div key={event.id} className="registered-event">
-                      <div className="registered-event-title">{event.title}</div>
-                      <div className="registered-event-date">
-                        {formatDate(event.date)} • {event.time}
+                  {registeredEvents.length ? (
+                    registeredEvents.map((event) => (
+                      <div key={event.id} className="registered-event">
+                        <div className="registered-event-title">{event.title}</div>
+                        <div className="registered-event-date">
+                          {formatDate(event.date)} • {event.time}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <p className="empty-state">No event registrations yet.</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -1244,9 +1438,9 @@ export default function App() {
             <button type="button" className="btn btn--outline" onClick={closeModal}>
               Cancel
             </button>
-            <button type="submit" className="btn btn--primary">
-              Create Event
-            </button>
+                       <button type="submit" className="btn btn--primary" disabled={eventSubmitting}>
+                         {eventSubmitting ? 'Submitting…' : 'Create Event'}
+                       </button>
           </div>
         </form>
       </Modal>
@@ -1347,9 +1541,9 @@ export default function App() {
             <button type="button" className="btn btn--outline" onClick={closeModal}>
               Cancel
             </button>
-            <button type="submit" className="btn btn--primary">
-              Create Post
-            </button>
+                       <button type="submit" className="btn btn--primary" disabled={postSubmitting}>
+                         {postSubmitting ? 'Submitting…' : 'Create Post'}
+                       </button>
           </div>
         </form>
       </Modal>
@@ -1462,89 +1656,56 @@ export default function App() {
         </form>
       </Modal>
 
-      <Modal title="Account Login" isOpen={activeModal === 'login'} onClose={closeModal}>
-        <form onSubmit={handleLoginSubmission}>
-          <div className="form-group">
-            <label className="form-label" htmlFor="loginRole">
-              Role
-            </label>
-            <select
-              id="loginRole"
-              className="form-control"
-              name="role"
-              value={loginForm.role}
-              onChange={handleLoginFormChange}
-              required
+      <Modal title="Sign in to EventsHub" isOpen={activeModal === 'login'} onClose={closeModal}>
+        <div className="auth-provider-buttons">
+          <button
+            type="button"
+            className="btn btn--google btn--full-width"
+            onClick={handleGoogleSignIn}
+            disabled={authLoading || authInitializing}
+          >
+            <svg
+              aria-hidden="true"
+              focusable="false"
+              width="18"
+              height="18"
+              viewBox="0 0 18 18"
             >
-              <option value="">Select role</option>
-              <option value={ROLES.ADMIN}>Admin</option>
-              <option value={ROLES.EVENT_HEAD}>Event Head</option>
-              <option value={ROLES.USER}>Student</option>
-            </select>
-          </div>
-
-          {loginForm.role && loginForm.role !== ROLES.ADMIN && (
-            <div className="form-group">
-              <label className="form-label" htmlFor="loginName">
-                Name
-              </label>
-              <input
-                id="loginName"
-                type="text"
-                className="form-control"
-                name="name"
-                value={loginForm.name}
-                onChange={handleLoginFormChange}
-                required
+              <path
+                fill="#EA4335"
+                d="M17.64 9.2045c0-.638-.0573-1.2527-.1636-1.8427H9v3.4818h4.8436c-.2091 1.125-.8436 2.0795-1.8 2.7177v2.2582h2.9082c1.7018-1.5664 2.6882-3.8746 2.6882-6.6149z"
               />
-            </div>
-          )}
-
-          {loginForm.role && loginForm.role !== ROLES.ADMIN && (
-            <div className="form-group">
-              <label className="form-label" htmlFor="loginEmail">
-                Email (optional)
-              </label>
-              <input
-                id="loginEmail"
-                type="email"
-                className="form-control"
-                name="email"
-                value={loginForm.email}
-                onChange={handleLoginFormChange}
-                placeholder="you@example.com"
+              <path
+                fill="#34A853"
+                d="M9 18c2.43 0 4.4673-.8064 5.9564-2.1805l-2.9082-2.2582c-.8064.54-1.8437.8573-3.0482.8573-2.3445 0-4.3309-1.5823-5.0373-3.716h-3.01v2.331c1.4773 2.9418 4.5027 4.9664 8.0473 4.9664z"
               />
-            </div>
-          )}
-
-          {loginForm.role === ROLES.ADMIN && (
-            <div className="form-group">
-              <label className="form-label" htmlFor="loginPassword">
-                Admin Password
-              </label>
-              <input
-                id="loginPassword"
-                type="password"
-                className="form-control"
-                name="password"
-                value={loginForm.password}
-                onChange={handleLoginFormChange}
-                required
+              <path
+                fill="#FBBC05"
+                d="M3.9627 10.7027c-.1827-.54-.2864-1.1164-.2864-1.7027 0-.5864.1037-1.1627.2864-1.7027v-2.331h-3.01C.3291 6.4227 0 7.6736 0 9s.3291 2.5773.9527 3.7345l3.01-2.3318z"
               />
-            </div>
-          )}
+              <path
+                fill="#4285F4"
+                d="M9 3.5795c1.3209 0 2.5073.4545 3.4405 1.3455l2.5818-2.5818C13.4646.8918 11.4273 0 9 0 5.4555 0 2.4309 2.0245.9527 4.9655l3.01 2.331c.7064-2.1336 2.6928-3.717 5.0373-3.717z"
+              />
+            </svg>
+            Continue with Google
+          </button>
+        </div>
 
-          {loginError && <p className="form-error">{loginError}</p>}
+        {(authMessage || authError) && (
+          <p className="form-error">{authMessage || getAuthErrorMessage(authError, 'login')}</p>
+        )}
 
-          <div className="modal-actions">
-            <button type="button" className="btn btn--outline" onClick={closeModal}>
-              Cancel
-            </button>
-            <button type="submit" className="btn btn--primary">
-              Login
-            </button>
-          </div>
-        </form>
+        <div className="modal-actions">
+          <button type="button" className="btn btn--outline btn--full-width" onClick={closeModal}>
+            Cancel
+          </button>
+        </div>
+
+        <p className="form-note">
+          Continue with Google to create or access your EventsHub profile. Make sure pop-ups are
+          allowed and that the EventsHub API at {API_BASE_URL} is running.
+        </p>
       </Modal>
     </div>
   );

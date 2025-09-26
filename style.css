@@ -448,6 +448,30 @@ pre code {
   background: var(--color-secondary);
 }
 
+.btn--google {
+  background: #ffffff;
+  color: #1a73e8;
+  border: 1px solid rgba(26, 115, 232, 0.3);
+  box-shadow: 0 4px 12px rgba(26, 115, 232, 0.15);
+  gap: var(--space-8);
+}
+
+.btn--google:hover {
+  background: #f8fbff;
+  box-shadow: 0 6px 16px rgba(26, 115, 232, 0.18);
+}
+
+[data-color-scheme="dark"] .btn--google {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.4);
+}
+
+[data-color-scheme="dark"] .btn--google:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .btn--sm {
   padding: var(--space-4) var(--space-12);
   font-size: var(--font-size-sm);
@@ -467,6 +491,41 @@ pre code {
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.auth-provider-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  margin-bottom: var(--space-12);
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  margin: var(--space-12) 0 var(--space-16);
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.auth-divider span {
+  white-space: nowrap;
+}
+
+.form-note {
+  margin-top: var(--space-16);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  text-align: center;
 }
 
 /* Form elements */
@@ -877,6 +936,19 @@ select.form-control {
   text-align: right;
 }
 
+.global-error-banner {
+  margin: var(--space-16) auto;
+  padding: var(--space-12) var(--space-16);
+  border-radius: var(--radius-base);
+  background-color: rgba(var(--color-error-rgb), 0.08);
+  border: 1px solid rgba(var(--color-error-rgb), 0.2);
+  color: var(--color-error);
+  max-width: 1200px;
+  display: flex;
+  gap: var(--space-12);
+  align-items: center;
+}
+
 /* Hero Section */
 .hero {
   padding: 80px 0;
@@ -1145,6 +1217,14 @@ select.form-control {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.post-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 /* Filters */

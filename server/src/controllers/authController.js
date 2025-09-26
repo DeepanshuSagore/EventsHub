@@ -1,6 +1,13 @@
 import User from '../models/User.js';
 import Profile from '../models/Profile.js';
 
+const adminEmailSet = new Set(
+  (process.env.ADMIN_EMAILS ?? '')
+    .split(',')
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean)
+);
+
 function sanitizeFirebaseUser(firebaseUser) {
   if (!firebaseUser) return {};
   return {
@@ -25,22 +32,32 @@ export async function syncAccount(req, res) {
   }
 
   const now = new Date();
+  const normalizedEmail = email.toLowerCase();
+  const shouldBeAdmin = adminEmailSet.has(normalizedEmail);
 
   let user = req.dbUser;
 
   if (!user) {
     user = new User({
       firebaseUid: uid,
-      email,
+      email: normalizedEmail,
       displayName: name,
       photoURL: picture ?? undefined,
-      lastLoginAt: now
+      lastLoginAt: now,
+      role: shouldBeAdmin ? 'admin' : undefined
     });
   } else {
-    user.email = email.toLowerCase();
+    user.email = normalizedEmail;
     user.displayName = name;
     user.photoURL = picture ?? user.photoURL;
     user.lastLoginAt = now;
+    if (shouldBeAdmin && user.role !== 'admin') {
+      user.role = 'admin';
+    }
+  }
+
+  if (!user.role) {
+    user.role = 'student';
   }
 
   await user.save();

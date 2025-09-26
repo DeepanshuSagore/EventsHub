@@ -39,13 +39,19 @@ export async function getMyProfile(req, res) {
   const firebaseUid = req.firebaseUser?.uid;
 
   if (!firebaseUid) {
-    return res.status(400).json({ message: 'Invalid Firebase user payload' });
+    const error = new Error('Invalid Firebase user payload');
+    error.status = 400;
+    throw error;
   }
 
-  const profile = await Profile.findOne({ firebaseUid });
+  let profile = await Profile.findOne({ firebaseUid });
 
   if (!profile) {
-    return res.status(404).json({ message: 'Profile not found' });
+    profile = await Profile.create({
+      firebaseUid,
+      name: req.dbUser?.displayName ?? req.firebaseUser?.name ?? undefined,
+      contactEmail: req.dbUser?.email ?? req.firebaseUser?.email ?? undefined
+    });
   }
 
   res.json({ profile: profile.toJSON() });
@@ -55,13 +61,15 @@ export async function updateMyProfile(req, res) {
   const firebaseUid = req.firebaseUser?.uid;
 
   if (!firebaseUid) {
-    return res.status(400).json({ message: 'Invalid Firebase user payload' });
+    const error = new Error('Invalid Firebase user payload');
+    error.status = 400;
+    throw error;
   }
 
   const update = {};
 
   for (const key of ALLOWED_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+    if (Object.prototype.hasOwnProperty.call(req.body ?? {}, key)) {
       update[key] = req.body[key];
     }
   }
@@ -82,7 +90,7 @@ export async function updateMyProfile(req, res) {
 
   const profile = await Profile.findOneAndUpdate(
     { firebaseUid },
-    { $set: update },
+    { $set: update, $setOnInsert: { firebaseUid } },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
 
