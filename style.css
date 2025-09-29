@@ -414,16 +414,34 @@ pre code {
 }
 
 .btn--primary {
-  background: var(--color-primary);
+  background: linear-gradient(
+    135deg,
+    rgba(var(--color-teal-500-rgb), 0.92) 0%,
+    rgba(var(--color-teal-500-rgb), 0.78) 100%
+  );
   color: var(--color-btn-primary-text);
+  border: 1px solid rgba(var(--color-teal-500-rgb), 0.45);
+  box-shadow: 0 6px 18px rgba(var(--color-teal-500-rgb), 0.25);
 }
 
 .btn--primary:hover {
-  background: var(--color-primary-hover);
+  background: linear-gradient(
+    135deg,
+    rgba(var(--color-teal-500-rgb), 0.86) 0%,
+    rgba(var(--color-teal-500-rgb), 0.96) 100%
+  );
+  color: #c8ffe7;
+  box-shadow: 0 10px 24px rgba(var(--color-teal-500-rgb), 0.3);
 }
 
 .btn--primary:active {
-  background: var(--color-primary-active);
+  background: linear-gradient(
+    135deg,
+    rgba(var(--color-teal-500-rgb), 0.84) 0%,
+    rgba(var(--color-teal-500-rgb), 0.92) 100%
+  );
+  color: #b5f7db;
+  box-shadow: 0 4px 12px rgba(var(--color-teal-500-rgb), 0.22);
 }
 
 .btn--secondary {
