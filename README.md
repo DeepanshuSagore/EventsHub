@@ -78,6 +78,8 @@ Create the following files locally (they are git-ignored):
 	PORT=5000
 	MONGODB_URI=your-mongodb-connection-string
 	MONGODB_DB_NAME=eventsHub
+	ADMIN_EMAILS=primary-admin@example.com
+	EVENT_HEAD_EMAILS=event-head@example.com
 
 	FIREBASE_PROJECT_ID=your-project-id
 	FIREBASE_CLIENT_EMAIL=service-account@your-project-id.iam.gserviceaccount.com

@@ -1,12 +1,17 @@
 import User from '../models/User.js';
 import Profile from '../models/Profile.js';
 
-const adminEmailSet = new Set(
-  (process.env.ADMIN_EMAILS ?? '')
-    .split(',')
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean)
-);
+function buildEmailSet(rawEmails) {
+  return new Set(
+    (rawEmails ?? '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+const adminEmailSet = buildEmailSet(process.env.ADMIN_EMAILS);
+const eventHeadEmailSet = buildEmailSet(process.env.EVENT_HEAD_EMAILS);
 
 function sanitizeFirebaseUser(firebaseUser) {
   if (!firebaseUser) return {};
@@ -34,6 +39,8 @@ export async function syncAccount(req, res) {
   const now = new Date();
   const normalizedEmail = email.toLowerCase();
   const shouldBeAdmin = adminEmailSet.has(normalizedEmail);
+  const shouldBeEventHead = eventHeadEmailSet.has(normalizedEmail);
+  const targetRole = shouldBeAdmin ? 'admin' : shouldBeEventHead ? 'eventHead' : 'student';
 
   let user = req.dbUser;
 
@@ -44,15 +51,15 @@ export async function syncAccount(req, res) {
       displayName: name,
       photoURL: picture ?? undefined,
       lastLoginAt: now,
-      role: shouldBeAdmin ? 'admin' : undefined
+      role: targetRole
     });
   } else {
     user.email = normalizedEmail;
     user.displayName = name;
     user.photoURL = picture ?? user.photoURL;
     user.lastLoginAt = now;
-    if (shouldBeAdmin && user.role !== 'admin') {
-      user.role = 'admin';
+    if (user.role !== targetRole) {
+      user.role = targetRole;
     }
   }
 

@@ -36,16 +36,16 @@ export async function listPublishedEvents(_req, res) {
 export async function createEvent(req, res) {
   const eventData = normalizeEventPayload(req.body ?? {});
 
-  const isAdmin = req.dbUser?.role === 'admin';
+  const hasPublishingPrivileges = ['admin', 'eventHead'].includes(req.dbUser?.role);
   const snapshot = buildUserSnapshot(req.firebaseUser, req.dbUser);
 
   const event = await Event.create({
     ...eventData,
-    status: isAdmin ? 'published' : 'pending',
+    status: hasPublishingPrivileges ? 'published' : 'pending',
     submittedBy: snapshot,
-    approvedBy: isAdmin ? snapshot : undefined,
+    approvedBy: hasPublishingPrivileges ? snapshot : undefined,
     submittedAt: new Date(),
-    approvedAt: isAdmin ? new Date() : undefined
+    approvedAt: hasPublishingPrivileges ? new Date() : undefined
   });
 
   res.status(201).json({ event: event.toJSON() });

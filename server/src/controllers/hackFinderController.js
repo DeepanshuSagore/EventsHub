@@ -56,15 +56,15 @@ export async function createHackFinderPost(req, res) {
 
   const userRole = req.dbUser?.role;
   const snapshot = buildUserSnapshot(req.firebaseUser, req.dbUser);
-  const isAdmin = userRole === 'admin';
+  const hasPublishingPrivileges = ['admin', 'eventHead'].includes(userRole);
 
   const post = await HackFinderPost.create({
     ...payload,
-    status: isAdmin ? 'published' : 'pending',
+    status: hasPublishingPrivileges ? 'published' : 'pending',
     submittedBy: snapshot,
-    approvedBy: isAdmin ? snapshot : undefined,
+    approvedBy: hasPublishingPrivileges ? snapshot : undefined,
     submittedAt: new Date(),
-    approvedAt: isAdmin ? new Date() : undefined
+    approvedAt: hasPublishingPrivileges ? new Date() : undefined
   });
 
   res.status(201).json({ post: post.toJSON() });
